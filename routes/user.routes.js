@@ -1,10 +1,11 @@
 import express from "express";
 import { usersTable } from "../models/index.js";
 import { db } from "../db/index.js";
-import { eq } from "drizzle-orm";
 import { error } from "node:console";
-import { randomBytes, createHmac } from "crypto";
-import { signupRequestPostBodySchema } from "../validation/request.validation.js";
+import { signupRequestPostBodySchema ,loginRequestPostBodySchema} from "../validation/request.validation.js";
+import { hashPasswordWithSalt } from "../utils/hash.js";
+import { getUserByEmail } from "../services/user.services.js";
+import jwt from 'jsonwebtoken'
 
 const router = express.Router();
 
@@ -17,18 +18,13 @@ router.post("/signup", async (req, res) => {
   }
   const { firstname, lastname, email, password } = validationResult.data;
 
-  const [existingUser] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(eq(usersTable.email, email));
+  const existingUser = await getUserByEmail(email);
+
   if (existingUser) {
     return res.status(400).json({ error: ` user already exist` });
   }
 
-  const salt = randomBytes(256).toString("hex");
-  const hashPassword = createHmac("sha256", salt)
-    .update(password)
-    .digest("hex");
+  const { salt, password: hashPassword } = hashPasswordWithSalt(password);
 
   const [user] = await db
     .insert(usersTable)
@@ -42,4 +38,25 @@ router.post("/signup", async (req, res) => {
     .returning({ id: usersTable.id });
   return res.status(201).json({ data: { userId: user.id } });
 });
+
+router.post('/login',async(req,res)=>{
+const validationResult = await loginRequestPostBodySchema.safeParseAsync(req.body)
+
+if(validationResult.error){
+  return res.status(400).json({error:validationResult.error})
+}
+const{email,password} = validationResult.data
+const user = await getUserByEmail(email)
+if(!user){
+  return res.status(404).json({error:` user not found`})
+}
+
+const { password:hashPassword} = hashPasswordWithSalt(password,user.salt)
+if(user.password !== hashPassword){
+  return res.status(401).json({error: `invalid password`})
+}
+const token = jwt.sign({id: user.id},process.env.JWT_SECRET)
+return res.json({token})
+
+})
 export default router;
