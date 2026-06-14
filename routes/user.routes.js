@@ -5,7 +5,8 @@ import { error } from "node:console";
 import { signupRequestPostBodySchema ,loginRequestPostBodySchema} from "../validation/request.validation.js";
 import { hashPasswordWithSalt } from "../utils/hash.js";
 import { getUserByEmail } from "../services/user.services.js";
-import jwt from 'jsonwebtoken'
+
+import {createUserToken} from '../utils/token.js'
 
 const router = express.Router();
 
@@ -55,7 +56,8 @@ const { password:hashPassword} = hashPasswordWithSalt(password,user.salt)
 if(user.password !== hashPassword){
   return res.status(401).json({error: `invalid password`})
 }
-const token = jwt.sign({id: user.id},process.env.JWT_SECRET)
+const token = await   createUserToken({id: user.id})
+
 return res.json({token})
 
 })
